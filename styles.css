@@ -75,4 +75,4 @@ body{margin:0;background:#0C0C0D}
 }
 
 .nf-video{display:block;width:100%;height:auto;aspect-ratio:16 / 9;background-color:#000;object-fit:cover}
-@media (max-width:860px){.nf-hero-video{aspect-ratio:4 / 5}}
+
