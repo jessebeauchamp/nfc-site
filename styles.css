@@ -76,3 +76,12 @@ body{margin:0;background:#0C0C0D}
 
 .nf-video{display:block;width:100%;height:auto;aspect-ratio:16 / 9;background-color:#000;object-fit:cover}
 
+.reel{position:relative}
+.reel-ctrls{position:absolute;right:16px;bottom:16px;display:flex;gap:8px}
+.reel-btn{display:inline-flex;align-items:center;gap:8px;min-height:44px;min-width:44px;padding:0 16px;border-radius:999px;border:1px solid rgba(242,240,235,.35);background:rgba(12,12,13,.55);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);color:#F2F0EB;font:500 14px/1 'Instrument Sans','Helvetica Neue',Arial,sans-serif;cursor:pointer}
+.reel-btn:hover{border-color:#F2F0EB}
+.reel-btn:focus-visible{outline:2px solid #FF6126;outline-offset:2px}
+.reel-btn .ic-on{display:none}
+.reel-btn[aria-pressed="true"] .ic-on{display:block}
+.reel-btn[aria-pressed="true"] .ic-off{display:none}
+@media (max-width:860px){.reel-ctrls{right:10px;bottom:10px}.reel-btn{padding:0 13px}.reel-lbl{display:none}}

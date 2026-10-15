@@ -1493,7 +1493,6 @@
     vids.forEach(function (el) {
       el.muted = true; el.defaultMuted = true;
       el.poster = phone ? el.dataset.posterM : el.dataset.poster;
-      if (el.hasAttribute('data-controls') && !phone) el.controls = true;
     });
     if (!('IntersectionObserver' in window)) { vids.forEach(start); return; }
     var io = new IntersectionObserver(function (entries) {
@@ -1502,10 +1501,50 @@
     vids.forEach(function (el) { io.observe(el); });
   }
 
+  // Reel: starts muted; viewers can turn sound on and go full screen.
+  function setupReel() {
+    var v = document.querySelector('.nf-hero-video');
+    if (!v) return;
+    var sound = document.querySelector('[data-reel="sound"]');
+    var full = document.querySelector('[data-reel="fullscreen"]');
+    function ensurePlaying() {
+      if (!v.src) { v.src = window.matchMedia('(max-width: 860px)').matches ? v.dataset.srcM : v.dataset.src; }
+      var r = v.play(); if (r && r.catch) r.catch(function () {});
+    }
+    function syncSound() {
+      var on = !v.muted;
+      sound.setAttribute('aria-pressed', on ? 'true' : 'false');
+      sound.setAttribute('aria-label', on ? 'Turn sound off' : 'Turn sound on');
+    }
+    sound.addEventListener('click', function () {
+      v.muted = !v.muted;
+      if (!v.muted) v.volume = 1;
+      ensurePlaying();
+      syncSound();
+    });
+    v.addEventListener('volumechange', syncSound);
+    full.addEventListener('click', function () {
+      ensurePlaying();
+      if (v.requestFullscreen) v.requestFullscreen().catch(function () {});
+      else if (v.webkitRequestFullscreen) v.webkitRequestFullscreen();
+      else if (v.webkitEnterFullscreen) v.webkitEnterFullscreen(); // iPhone
+    });
+    // Native controls while full screen, so viewers can scrub and change volume.
+    function onFs() {
+      var fs = document.fullscreenElement === v || document.webkitFullscreenElement === v;
+      v.controls = !!fs;
+    }
+    document.addEventListener('fullscreenchange', onFs);
+    document.addEventListener('webkitfullscreenchange', onFs);
+    v.addEventListener('webkitendfullscreen', function () { v.controls = false; var r = v.play(); if (r && r.catch) r.catch(function () {}); });
+    syncSound();
+  }
+
   function boot() {
     var page = new Component(PROPS);
     page.componentDidMount();
     setupVideos();
+    setupReel();
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
 })();
