@@ -1541,8 +1541,11 @@
   }
 
   function boot() {
-    var page = new Component(PROPS);
-    page.componentDidMount();
+    // Option pages bring their own hero; only the original page mounts the heat map.
+    if (document.documentElement.getAttribute('data-hero') !== 'custom') {
+      var page = new Component(PROPS);
+      page.componentDidMount();
+    }
     setupVideos();
     setupReel();
   }

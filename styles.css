@@ -85,3 +85,13 @@ body{margin:0;background:#0C0C0D}
 .reel-btn[aria-pressed="true"] .ic-on{display:block}
 .reel-btn[aria-pressed="true"] .ic-off{display:none}
 @media (max-width:860px){.reel-ctrls{right:10px;bottom:10px}.reel-btn{padding:0 13px}.reel-lbl{display:none}}
+
+/* Presentation-only switcher between design options. Remove the bar and set --bar-h to 0 for launch. */
+:root{--bar-h:44px}
+body{padding-top:var(--bar-h)}
+.opt-bar{position:fixed;top:0;left:0;right:0;z-index:1000;height:var(--bar-h);display:flex;align-items:center;justify-content:center;gap:6px;padding:0 12px;background:rgba(12,12,13,.86);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);border-bottom:1px solid #232325}
+.opt-bar a{display:inline-flex;align-items:center;height:32px;padding:0 14px;border-radius:999px;border:1px solid transparent;font-family:'DM Mono',ui-monospace,'SF Mono',Menlo,monospace;font-size:11px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;color:#B5B1A9;text-decoration:none;white-space:nowrap}
+.opt-bar a:hover{color:#F2F0EB;border-color:#3B3B3E}
+.opt-bar a[aria-current="page"]{background:#F2F0EB;color:#0C0C0D}
+.opt-bar a:focus-visible{outline:2px solid #FF6126;outline-offset:2px}
+@media (max-width:380px){.opt-bar a{padding:0 10px;letter-spacing:.08em}}
