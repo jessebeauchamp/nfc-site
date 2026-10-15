@@ -16,7 +16,6 @@
 .o2-line2{opacity:0;pointer-events:none}
 .o2-hint{margin:26px 0 0;display:flex;align-items:center;gap:12px;font-family:'DM Mono',ui-monospace,'SF Mono',Menlo,monospace;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#CFCBC3;opacity:0;animation:o2-fade .8s ease 1.6s forwards}
 .o2-hint i{display:inline-block;width:8px;height:8px;border-radius:50%;background:#FF6126;box-shadow:0 0 0 4px rgba(255,97,38,.2)}
-.o2-tag{position:absolute;left:0;top:0;z-index:3;pointer-events:none;padding:6px 10px;border-radius:999px;background:rgba(12,12,13,.62);border:1px solid rgba(242,240,235,.22);font-family:'DM Mono',ui-monospace,'SF Mono',Menlo,monospace;font-size:11px;letter-spacing:.1em;text-transform:uppercase;white-space:nowrap;opacity:0;will-change:transform,opacity}
 .o2-ctrlbox{position:absolute;left:0;top:0;z-index:5;pointer-events:none}
 .o2-ctrlbox .reel-ctrls{opacity:0;transition:opacity .35s ease}
 .o2-ctrlbox.is-on .reel-ctrls{opacity:1;pointer-events:auto}
@@ -31,8 +30,7 @@
 @media (max-width:860px){
   .o2-hero{height:220vh}
   .o2-header{padding-top:28px}
-  .o2-tag{display:none}
-  .o2-hero + section{margin-top:40px!important}
+    .o2-hero + section{margin-top:40px!important}
 }
 @media (prefers-reduced-motion:reduce){
   .rise .w>span{transform:none;animation:none}

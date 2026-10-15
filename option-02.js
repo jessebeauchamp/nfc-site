@@ -14,7 +14,6 @@
   var line2 = hero.querySelector('.o2-line2');
   var scrim = hero.querySelector('.o2-scrim');
   var header = hero.querySelector('.o2-header');
-  var tag = hero.querySelector('.o2-tag');
   var hintTxt = hero.querySelector('.o2-hint-txt');
 
   var phone = window.matchMedia('(max-width: 860px)').matches;
@@ -45,8 +44,12 @@ uniform vec2 u_texSize;
 uniform vec4 u_rect;      // where the reel is drawn: x, y (from the bottom), w, h in canvas pixels
 uniform float u_filter;   // 1 = LED wall, 0 = clean picture
 uniform float u_pitch;    // LED spacing in canvas pixels
-uniform vec3 u_lens;      // lens centre (x, y from the bottom) and radius
+uniform vec3 u_lens;      // lens centre (x, y from the bottom) and the radius of its clear centre dot
 uniform float u_lensAmt;
+uniform vec4 u_rings[16]; // rings of dots around the centre: radius, dot radius, dot count, angle offset
+uniform int u_ringCount;
+uniform float u_zoneR;    // outer edge of the last ring
+uniform float u_ringB;    // the LED dot radius the rings step down to
 uniform float u_power;    // 0 to 1: the wall switching on, top to bottom
 uniform float u_frame;    // 0 to 1: hairline bezel as the wall becomes a screen
 uniform float u_dpr;
@@ -64,6 +67,42 @@ vec2 coverUV(vec2 p) {
   return clamp(uv, vec2(0.0), vec2(1.0));
 }
 vec3 tap(vec2 p, float lod) { return textureLod(u_tex, coverUV(p), lod).rgb; }
+vec3 ledTone(vec3 c) { return pow(c, vec3(1.35)) * 1.12; }
+
+// The lens: one clear centre dot, then rings of whole dots, each ring smaller than the one
+// inside it, down to LED size. Big dots are windows onto the clean footage; the smallest ones
+// become LEDs. Returns premultiplied colour and coverage.
+vec4 lensZone(vec2 p, float k, float lod0) {
+  vec2 v = p - u_lens.xy;
+  float d = length(v);
+  float aa = 0.75 * u_dpr;
+  float R0 = u_lens.z;
+  // between the dots: a faint, blurred glow of the footage, fading out toward the LED wall
+  vec3 fill = tap(p, lod0 + 4.0) * 0.16 * smoothstep(u_zoneR, u_zoneR - 6.0 * u_ringB, d);
+  if (d < R0 + aa) {
+    float cov = 1.0 - smoothstep(R0 - aa, R0 + aa, d);
+    return vec4(tap(p, lod0) * cov + fill * (1.0 - cov), cov);
+  }
+  float ang = atan(v.y, v.x);
+  for (int i = 0; i < 16; i++) {
+    if (i >= u_ringCount) break;
+    vec4 R = u_rings[i];
+    if (abs(d - R.x) < 1.35 * R.y + aa) {
+      float stepA = 6.2831853 / R.z;
+      float a = R.w + floor((ang - R.w) / stepA + 0.5) * stepA;
+      vec2 cpos = u_lens.xy + R.x * vec2(cos(a), sin(a));
+      float dd = length(p - cpos);
+      float cov = 1.0 - smoothstep(R.y - aa, R.y + aa, dd);
+      float wClean = smoothstep(u_ringB * 1.3, u_ringB * 3.5, R.y);
+      vec3 led = ledTone(tap(cpos, max(log2(2.0 * R.y * k), 0.0)));
+      vec3 c = mix(led * 1.5, tap(p, lod0), wClean);
+      float dc = dd * 0.37 / R.y;
+      vec3 halo = led * exp(-dc * dc * 4.5) * 0.15 * (1.0 - wClean);
+      return vec4(c * cov + (halo + fill) * (1.0 - cov), cov);
+    }
+  }
+  return vec4(fill, 0.0);
+}
 
 void main() {
   vec2 p = gl_FragCoord.xy;
@@ -92,7 +131,9 @@ void main() {
       for (int i = -1; i <= 1; i++) {
         vec2 cc = cell + vec2(float(i), float(j)) + 0.5;
         vec2 cp = c + cc * P;
-        vec3 s = pow(tap(cp, lod), vec3(1.35)) * 1.12;
+        vec3 s = ledTone(tap(cp, lod));
+        float clear = length(cp - u_lens.xy) - u_zoneR - 0.37 * P;
+        s *= mix(1.0, smoothstep(0.2 * P, 0.9 * P, clear), u_lensAmt);   // dots near the lens fade out whole
         float rowT = clamp((hi.y - cp.y) / u_rect.w, 0.0, 1.0);
         float on = smoothstep(0.0, 0.08, u_power * 1.25 - rowT - hash(cc) * 0.12);
         s *= on * (0.93 + 0.14 * hash(cc + 17.0));
@@ -106,25 +147,9 @@ void main() {
     col = mix(clean, wall, ledAmt);
   }
 
-  if (u_lensAmt > 0.001) {
-    vec2 tl = p - u_lens.xy;
-    float dl = length(tl);
-    float r = u_lens.z;
-    float shade = smoothstep(r + 26.0 * u_dpr, r, dl) * step(r, dl);
-    col *= 1.0 - 0.4 * shade * u_lensAmt;            // soft shadow lifts the lens off the wall
-    if (dl < r + 2.0 * u_dpr) {
-      float nd = dl / r;
-      vec2 dir = tl / max(dl, 1e-3);
-      vec2 q = u_lens.xy + tl * (1.0 - 0.14 * (1.0 - nd * nd));   // slight magnification
-      float ca = smoothstep(0.5, 1.0, nd) * 6.0 * u_dpr;           // colour split toward the rim
-      vec3 lc = vec3(tap(q + dir * ca, lod0).r, tap(q, lod0).g, tap(q - dir * ca, lod0).b);
-      lc *= 1.0 - 0.18 * smoothstep(0.75, 1.0, nd);
-      lc += vec3(0.22) * smoothstep(0.8, 0.98, nd) * pow(max(dot(dir, vec2(-0.7071, 0.7071)), 0.0), 3.0);
-      float m = (1.0 - smoothstep(r - 1.2 * u_dpr, r, dl)) * u_lensAmt;
-      col = mix(col, lc, m);
-      float rim = 1.0 - smoothstep(0.0, 1.1 * u_dpr, abs(dl - r));
-      col = mix(col, vec3(1.0, 0.38, 0.15), rim * u_lensAmt);
-    }
+  if (u_lensAmt > 0.001 && length(p - u_lens.xy) < u_zoneR + 2.0 * u_dpr) {
+    vec4 z = lensZone(p, k, lod0);
+    col = col * (1.0 - z.a * u_lensAmt) + z.rgb * u_lensAmt;
   }
 
   float bez = (1.0 - smoothstep(0.0, u_dpr, edge)) * u_frame;
@@ -159,7 +184,7 @@ void main() {
     var loc = gl.getAttribLocation(prog, 'a_pos');
     gl.enableVertexAttribArray(loc);
     gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
-    ['u_res', 'u_time', 'u_tex', 'u_texSize', 'u_rect', 'u_filter', 'u_pitch', 'u_lens', 'u_lensAmt', 'u_power', 'u_frame', 'u_dpr']
+    ['u_res', 'u_time', 'u_tex', 'u_texSize', 'u_rect', 'u_filter', 'u_pitch', 'u_lens', 'u_lensAmt', 'u_rings', 'u_ringCount', 'u_zoneR', 'u_ringB', 'u_power', 'u_frame', 'u_dpr']
       .forEach(function (n) { U[n] = gl.getUniformLocation(prog, n); });
     tex = gl.createTexture();
     gl.activeTexture(gl.TEXTURE0);
@@ -226,6 +251,26 @@ void main() {
   }
 
   // ---------- Lens
+  // Rings of dots around the clear centre, in canvas pixels. Each ring's dots are a fixed
+  // fraction of the previous ring's, until they match the LED dots; two LED-size rings close it off.
+  var ringData = new Float32Array(64);
+  function buildRings(R0, b, f) {
+    var edge = R0, s = R0, extra = 0, count = 0;
+    ringData.fill(0);
+    for (var i = 1; i <= 16; i++) {
+      var sn = Math.max(s * f, b);
+      if (sn <= b * 1.0001) extra++;
+      var gap = Math.max(0.7 * b, 0.22 * sn);             // LED-like hairline gaps, a touch wider for big dots
+      var r = edge + gap + sn;
+      var n = Math.max(6, Math.floor(2 * Math.PI * r / (2 * sn + gap)));
+      ringData[count * 4] = r; ringData[count * 4 + 1] = sn;
+      ringData[count * 4 + 2] = n; ringData[count * 4 + 3] = (i % 2) * Math.PI / n;
+      count++;
+      edge = r + sn; s = sn;
+      if (extra >= 2) break;
+    }
+    return { count: count, zoneR: edge };
+  }
   var ptr = { x: 0, y: 0, on: false, at: 0 };
   var lens = { x: 0, y: 0, ready: false };
   function setPtr(e) {
@@ -251,17 +296,17 @@ void main() {
 
     var since = powerAt ? (now - powerAt) / 1000 : 0;
     var power = reduce ? 1 : clamp(since / 1.4, 0, 1);
-    var lensIn = reduce ? 1 : smooth(0.9, 2.0, since);
+    var lensIn = reduce ? 1 : smooth(1.3, 2.5, since);
     var usePtr = ptr.on && (!coarse || now - ptr.at < 5000);
     var tx, ty;
     if (usePtr) { tx = ptr.x; ty = ptr.y; }
     else if (reduce) { tx = W * 0.66; ty = H * 0.42; }
-    else if (phone) { tx = W * (0.5 + 0.16 * Math.sin(t * 0.21)); ty = H * (0.36 + 0.12 * Math.sin(t * 0.29 + 1.2)); }
-    else { tx = W * (0.64 + 0.2 * Math.sin(t * 0.21)); ty = H * (0.42 + 0.17 * Math.sin(t * 0.29 + 1.2)); }
+    else if (phone) { tx = W * (0.5 + 0.14 * Math.sin(t * 0.21)); ty = H * (0.36 + 0.1 * Math.sin(t * 0.29 + 1.2)); }
+    else { tx = W * (0.62 + 0.14 * Math.sin(t * 0.21)); ty = H * (0.45 + 0.1 * Math.sin(t * 0.29 + 1.2)); }
     if (!lens.ready) { lens.x = tx; lens.y = ty; lens.ready = true; }
     var k = 1 - Math.exp(-dt * (usePtr ? 10 : 2.5));
     lens.x += (tx - lens.x) * k; lens.y += (ty - lens.y) * k;
-    var r = (phone ? clamp(W * 0.3, 90, 150) : clamp(W * 0.12, 120, 210)) * (0.6 + 0.4 * lensIn);
+    var R0 = phone ? clamp(W * 0.12, 40, 52) : clamp(W * 0.05, 60, 90);     // the clear centre dot
     var lensAmt = smooth(0.35, 0.9, f) * lensIn * (haveTex ? 1 : 0);
 
     if (gl) {
@@ -273,9 +318,14 @@ void main() {
       gl.uniform4f(U.u_rect, rect.x * dpr, (H - rect.y - rect.h) * dpr, rect.w * dpr, rect.h * dpr);
       gl.uniform1f(U.u_filter, f);
       var P0 = (phone ? 7 : 9) * dpr, Pmin = 1.25 * dpr;
+      var rings = buildRings(R0 * dpr, 0.37 * P0, phone ? 0.55 : 0.6);
       gl.uniform1f(U.u_pitch, Pmin + (P0 - Pmin) * Math.pow(f, 1.6));
-      gl.uniform3f(U.u_lens, lens.x * dpr, (H - lens.y) * dpr, r * dpr);
+      gl.uniform3f(U.u_lens, lens.x * dpr, (H - lens.y) * dpr, R0 * dpr);
       gl.uniform1f(U.u_lensAmt, lensAmt);
+      gl.uniform4fv(U.u_rings, ringData);
+      gl.uniform1i(U.u_ringCount, rings.count);
+      gl.uniform1f(U.u_zoneR, rings.zoneR);
+      gl.uniform1f(U.u_ringB, 0.37 * P0);
       gl.uniform1f(U.u_power, haveTex ? power : 0);
       gl.uniform1f(U.u_frame, e);
       gl.uniform1f(U.u_dpr, dpr);
@@ -295,8 +345,6 @@ void main() {
     header.style.opacity = (1 - smooth(0.42, 0.56, p)).toFixed(3);
     header.style.visibility = p > 0.56 ? 'hidden' : '';
     scrim.style.opacity = (1 - smooth(0.62, 0.78, p)).toFixed(3);
-    tag.style.opacity = gl ? lensAmt.toFixed(3) : '0';
-    tag.style.transform = 'translate3d(' + (lens.x + r * 0.74).toFixed(1) + 'px,' + (lens.y + r * 0.74).toFixed(1) + 'px,0)';
 
     if (visible && !document.hidden) raf = requestAnimationFrame(tick);
   }
